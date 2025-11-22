@@ -1,0 +1,388 @@
+@startuml AcademiaDev_ClassDiagram
+
+package "domain" {
+    abstract class User {
+        -name: String
+        -email: String
+        +getName(): String
+        +getEmail(): String
+    }
+    
+    class Admin {
+    }
+    
+    class Student {
+        -subscriptionPlan: SubscriptionPlan
+        +getSubscriptionPlan(): SubscriptionPlan
+        +changeSubscriptionPlan(plan: SubscriptionPlan): void
+        +canEnroll(currentActiveEnrollments: int): boolean
+    }
+    
+    abstract class SubscriptionPlan {
+        -name: String
+        +getName(): String
+        {abstract} +canEnroll(currentActiveEnrollments: int): boolean
+        {abstract} +getMaxEnrollments(): int
+    }
+    
+    class BasicPlan {
+        -MAX_ENROLLMENTS: int = 3
+    }
+    
+    class PremiumPlan {
+    }
+    
+    class Course {
+        -title: String
+        -description: String
+        -instructorName: String
+        -durationInHours: int
+        -difficultyLevel: DifficultyLevel
+        -status: CourseStatus
+        +getTitle(): String
+        +getDescription(): String
+        +getInstructorName(): String
+        +getDurationInHours(): int
+        +getDifficultyLevel(): DifficultyLevel
+        +getStatus(): CourseStatus
+        +activate(): void
+        +deactivate(): void
+        +isActive(): boolean
+    }
+    
+    class Enrollment {
+        -student: Student
+        -course: Course
+        -progress: int
+        +getStudent(): Student
+        +getCourse(): Course
+        +getProgress(): int
+        +updateProgress(progress: int): void
+        +isActive(): boolean
+    }
+    
+    class SupportTicket {
+        -title: String
+        -message: String
+        -user: User
+        +getTitle(): String
+        +getMessage(): String
+        +getUser(): User
+    }
+    
+    enum DifficultyLevel {
+        BEGINNER
+        INTERMEDIATE
+        ADVANCED
+    }
+    
+    enum CourseStatus {
+        ACTIVE
+        INACTIVE
+    }
+    
+    class BusinessException {
+        +BusinessException(message: String)
+    }
+    
+    class EnrollmentException {
+        +EnrollmentException(message: String)
+    }
+    
+    User <|-- Admin
+    User <|-- Student
+    SubscriptionPlan <|-- BasicPlan
+    SubscriptionPlan <|-- PremiumPlan
+    Student --> SubscriptionPlan
+    Enrollment --> Student
+    Enrollment --> Course
+    SupportTicket --> User
+    Course --> DifficultyLevel
+    Course --> CourseStatus
+    EnrollmentException --|> BusinessException
+}
+
+package "application" {
+    package "repositories" {
+        interface CourseRepository {
+            +save(course: Course): void
+            +findByTitle(title: String): Optional<Course>
+            +findAll(): List<Course>
+            +findByDifficultyLevel(level: DifficultyLevel): List<Course>
+            +findActiveCourses(): List<Course>
+        }
+        
+        interface UserRepository {
+            +save(user: User): void
+            +findByEmail(email: String): Optional<User>
+            +findAll(): List<User>
+            +findAllStudents(): List<User>
+        }
+        
+        interface EnrollmentRepository {
+            +save(enrollment: Enrollment): void
+            +findByStudent(student: Student): List<Enrollment>
+            +findActiveByStudent(student: Student): List<Enrollment>
+            +countActiveByStudent(student: Student): int
+            +findAll(): List<Enrollment>
+            +remove(enrollment: Enrollment): void
+            +existsByStudentAndCourse(student: Student, course: Course): boolean
+        }
+        
+        interface SupportTicketQueue {
+            +addTicket(ticket: SupportTicket): void
+            +nextTicket(): Optional<SupportTicket>
+            +isEmpty(): boolean
+        }
+    }
+    
+    package "usecases" {
+        class AtivarCursoUseCase {
+            -courseRepository: CourseRepository
+            +execute(courseTitle: String): void
+        }
+        
+        class DesativarCursoUseCase {
+            -courseRepository: CourseRepository
+            +execute(courseTitle: String): void
+        }
+        
+        class AlterarPlanoAlunoUseCase {
+            -userRepository: UserRepository
+            +execute(studentEmail: String, newPlan: SubscriptionPlan): void
+        }
+        
+        class MatricularAlunoUseCase {
+            -enrollmentRepository: EnrollmentRepository
+            -courseRepository: CourseRepository
+            -userRepository: UserRepository
+            +execute(studentEmail: String, courseTitle: String): void
+        }
+        
+        class ConsultarMatriculasUseCase {
+            -enrollmentRepository: EnrollmentRepository
+            -userRepository: UserRepository
+            +execute(studentEmail: String): List<Enrollment>
+        }
+        
+        class AtualizarProgressoUseCase {
+            -enrollmentRepository: EnrollmentRepository
+            -userRepository: UserRepository
+            +execute(studentEmail: String, courseTitle: String, progress: int): void
+        }
+        
+        class CancelarMatriculaUseCase {
+            -enrollmentRepository: EnrollmentRepository
+            -userRepository: UserRepository
+            +execute(studentEmail: String, courseTitle: String): void
+        }
+        
+        class AbrirTicketUseCase {
+            -ticketQueue: SupportTicketQueue
+            -userRepository: UserRepository
+            +execute(userEmail: String, title: String, message: String): void
+        }
+        
+        class AtenderTicketUseCase {
+            -ticketQueue: SupportTicketQueue
+            +execute(): SupportTicket
+        }
+        
+        class ConsultarCatalogoUseCase {
+            -courseRepository: CourseRepository
+            +execute(): List<Course>
+        }
+        
+        class GerarRelatorioCursosPorNivelUseCase {
+            -courseRepository: CourseRepository
+            +execute(difficultyLevel: DifficultyLevel): List<Course>
+        }
+        
+        class GerarRelatorioInstrutoresAtivosUseCase {
+            -courseRepository: CourseRepository
+            +execute(): Set<String>
+        }
+        
+        class GerarRelatorioAlunosPorPlanoUseCase {
+            -userRepository: UserRepository
+            +execute(): Map<SubscriptionPlan, List<Student>>
+        }
+        
+        class GerarRelatorioMediaProgressoUseCase {
+            -enrollmentRepository: EnrollmentRepository
+            +execute(): double
+        }
+        
+        class GerarRelatorioAlunoMaisMatriculasUseCase {
+            -enrollmentRepository: EnrollmentRepository
+            -userRepository: UserRepository
+            +execute(): Optional<Student>
+        }
+    }
+}
+
+package "infrastructure" {
+    package "persistence" {
+        class CourseRepositoryEmMemoria {
+            -courses: Map<String, Course>
+            +save(course: Course): void
+            +findByTitle(title: String): Optional<Course>
+            +findAll(): List<Course>
+            +findByDifficultyLevel(level: DifficultyLevel): List<Course>
+            +findActiveCourses(): List<Course>
+        }
+        
+        class UserRepositoryEmMemoria {
+            -users: Map<String, User>
+            +save(user: User): void
+            +findByEmail(email: String): Optional<User>
+            +findAll(): List<User>
+            +findAllStudents(): List<User>
+        }
+        
+        class EnrollmentRepositoryEmMemoria {
+            -enrollments: List<Enrollment>
+            +save(enrollment: Enrollment): void
+            +findByStudent(student: Student): List<Enrollment>
+            +findActiveByStudent(student: Student): List<Enrollment>
+            +countActiveByStudent(student: Student): int
+            +findAll(): List<Enrollment>
+            +remove(enrollment: Enrollment): void
+            +existsByStudentAndCourse(student: Student, course: Course): boolean
+        }
+        
+        class SupportTicketQueueEmMemoria {
+            -queue: Queue<SupportTicket>
+            +addTicket(ticket: SupportTicket): void
+            +nextTicket(): Optional<SupportTicket>
+            +isEmpty(): boolean
+        }
+    }
+    
+    package "ui" {
+        class ConsoleView {
+            +printWelcome(): void
+            +printAdminMenu(): void
+            +printStudentMenu(): void
+            +printReportsMenu(): void
+            +printMessage(message: String): void
+            +printError(error: String): void
+            +printSuccess(message: String): void
+            +printCourses(courses: List<Course>): void
+            +printEnrollments(enrollments: List<Enrollment>): void
+        }
+        
+        class ConsoleController {
+            -view: ConsoleView
+            -scanner: Scanner
+            -userRepository: UserRepository
+            -currentUser: User
+            -ativarCursoUseCase: AtivarCursoUseCase
+            -desativarCursoUseCase: DesativarCursoUseCase
+            +run(): void
+            -authenticate(): void
+            -handleAdminOption(option: int): boolean
+            -handleStudentOption(option: int): boolean
+        }
+    }
+    
+    package "utils" {
+        class GenericCsvExporter {
+            +{static} exportToCsv(data: List<T>, selectedColumns: List<String>): String
+            -{static} getFieldValue(item: T, columnName: String): String
+            -{static} findGetterMethod(clazz: Class, getterName: String, fieldName: String): Method
+            -{static} findField(clazz: Class, fieldName: String): Field
+        }
+    }
+}
+
+package "main" {
+    class Main {
+        +{static} main(args: String[]): void
+    }
+    
+    class InitialData {
+        +{static} populate(courseRepository: CourseRepository, userRepository: UserRepository, enrollmentRepository: EnrollmentRepository): void
+    }
+}
+
+' Relações de Implementação
+CourseRepository <|.. CourseRepositoryEmMemoria
+UserRepository <|.. UserRepositoryEmMemoria
+EnrollmentRepository <|.. EnrollmentRepositoryEmMemoria
+SupportTicketQueue <|.. SupportTicketQueueEmMemoria
+
+' Dependências dos Use Cases
+AtivarCursoUseCase --> CourseRepository
+DesativarCursoUseCase --> CourseRepository
+AlterarPlanoAlunoUseCase --> UserRepository
+MatricularAlunoUseCase --> EnrollmentRepository
+MatricularAlunoUseCase --> CourseRepository
+MatricularAlunoUseCase --> UserRepository
+ConsultarMatriculasUseCase --> EnrollmentRepository
+ConsultarMatriculasUseCase --> UserRepository
+AtualizarProgressoUseCase --> EnrollmentRepository
+AtualizarProgressoUseCase --> UserRepository
+CancelarMatriculaUseCase --> EnrollmentRepository
+CancelarMatriculaUseCase --> UserRepository
+AbrirTicketUseCase --> SupportTicketQueue
+AbrirTicketUseCase --> UserRepository
+AtenderTicketUseCase --> SupportTicketQueue
+ConsultarCatalogoUseCase --> CourseRepository
+GerarRelatorioCursosPorNivelUseCase --> CourseRepository
+GerarRelatorioInstrutoresAtivosUseCase --> CourseRepository
+GerarRelatorioAlunosPorPlanoUseCase --> UserRepository
+GerarRelatorioMediaProgressoUseCase --> EnrollmentRepository
+GerarRelatorioAlunoMaisMatriculasUseCase --> EnrollmentRepository
+GerarRelatorioAlunoMaisMatriculasUseCase --> UserRepository
+
+' Dependências da UI
+ConsoleController --> ConsoleView
+ConsoleController --> UserRepository
+ConsoleController --> AtivarCursoUseCase
+ConsoleController --> DesativarCursoUseCase
+ConsoleController --> AlterarPlanoAlunoUseCase
+ConsoleController --> MatricularAlunoUseCase
+ConsoleController --> ConsultarMatriculasUseCase
+ConsoleController --> AtualizarProgressoUseCase
+ConsoleController --> CancelarMatriculaUseCase
+ConsoleController --> AbrirTicketUseCase
+ConsoleController --> AtenderTicketUseCase
+ConsoleController --> ConsultarCatalogoUseCase
+ConsoleController --> GerarRelatorioCursosPorNivelUseCase
+ConsoleController --> GerarRelatorioInstrutoresAtivosUseCase
+ConsoleController --> GerarRelatorioAlunosPorPlanoUseCase
+ConsoleController --> GerarRelatorioMediaProgressoUseCase
+ConsoleController --> GerarRelatorioAlunoMaisMatriculasUseCase
+ConsoleController ..> GenericCsvExporter : uses
+
+' Dependências do Main
+Main --> CourseRepository
+Main --> UserRepository
+Main --> EnrollmentRepository
+Main --> SupportTicketQueue
+Main --> AtivarCursoUseCase
+Main --> DesativarCursoUseCase
+Main --> AlterarPlanoAlunoUseCase
+Main --> MatricularAlunoUseCase
+Main --> ConsultarMatriculasUseCase
+Main --> AtualizarProgressoUseCase
+Main --> CancelarMatriculaUseCase
+Main --> AbrirTicketUseCase
+Main --> AtenderTicketUseCase
+Main --> ConsultarCatalogoUseCase
+Main --> GerarRelatorioCursosPorNivelUseCase
+Main --> GerarRelatorioInstrutoresAtivosUseCase
+Main --> GerarRelatorioAlunosPorPlanoUseCase
+Main --> GerarRelatorioMediaProgressoUseCase
+Main --> GerarRelatorioAlunoMaisMatriculasUseCase
+Main --> ConsoleView
+Main --> ConsoleController
+Main --> InitialData
+
+InitialData --> CourseRepository
+InitialData --> UserRepository
+InitialData --> EnrollmentRepository
+
+@enduml
+
